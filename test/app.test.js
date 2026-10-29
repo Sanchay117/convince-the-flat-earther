@@ -177,6 +177,16 @@ test('a refusal pays nothing, and Earl sees the player\'s earlier turns', async 
   assert.deepEqual(input.map(m => m.content), ['first try', 'Lies.', 'second try']);
 });
 
+test('turns in the same millisecond keep their order', async t => {
+  t.mock.method(Date, 'now', () => 1_000);
+  const { llm, game, play } = setup([{ reply: 'One.', conceded: false }, { reply: 'Two.', conceded: false }]);
+  await game.submit((await play(ALICE, 'first')).txHash);
+  await game.submit((await play(ALICE, 'second')).txHash);
+  await game.submit((await play(ALICE, 'third')).txHash);
+  assert.deepEqual(llm.calls[2].input.map(m => m.content), ['first', 'One.', 'second', 'Two.', 'third']);
+  assert.match(llm.refereeCalls[2].input, /E1: One\.\n\nE2: Two\.\n\nNEW: Flat\.$/);
+});
+
 test('a hash paid from another wallet is never answered', async () => {
   const { chain, llm, game, play } = setup([{ reply: 'Round!', conceded: true }]);
   const { txHash } = await play(ALICE, 'my winning argument', BOB);

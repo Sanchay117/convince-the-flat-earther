@@ -26,6 +26,10 @@ export function createGame({
     return run;
   };
 
+  // Records are ordered by `at`, so no two may share one, even within a millisecond.
+  let lastAt = store.attempts({ limit: 1 })[0]?.at ?? 0;
+  const stamp = () => (lastAt = Math.max(Date.now(), lastAt + 1));
+
   function prepare({ player, text }) {
     if (typeof player !== 'string' || !isAddress(player, { strict: false })) throw new UserError('Connect a wallet first.');
     const problem = validateMessage(text);
@@ -84,7 +88,7 @@ export function createGame({
         log.warn(`attempt ${attempt.msgHash} paid by ${attempt.player}, written by ${pending.player}`);
         return null;
       }
-      const at = Date.now();
+      const at = stamp();
       const earl = await askEarl(llm, {
         round: attempt.round,
         history: historyBefore({ round: attempt.round, player: pending.player, at }),

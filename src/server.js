@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { AgentRouterClient } from './agentrouter.js';
 import { createGame, UserError } from './app.js';
 import { createChain, EXPLORER, PUBLIC_RPC, WIF_ADDRESS, robinhood } from './chain.js';
+import { EARL_BELIEFS } from './game.js';
 import { Store } from './store.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -18,7 +19,11 @@ const env = process.env;
 const store = new Store(resolve(root, env.DATA_FILE || 'data/game.json'));
 if (store.lastBlock == null && env.START_BLOCK) store.lastBlock = Number(env.START_BLOCK) - 1;
 const chain = createChain({ rpcUrl: env.RPC_URL || PUBLIC_RPC, address: env.GAME_ADDRESS, judgeKey: env.JUDGE_PRIVATE_KEY });
-const game = createGame({ llm: new AgentRouterClient(), chain, store, reasoningEffort: env.EARL_EFFORT || 'medium' });
+const game = createGame({
+  llm: new AgentRouterClient(), chain, store,
+  reasoningEffort: env.EARL_EFFORT || 'low',
+  refereeEffort: env.REFEREE_EFFORT || 'medium',
+});
 
 // Sent to the browser. Never put the Alchemy URL here: it carries the API key.
 const publicConfig = {
@@ -28,6 +33,7 @@ const publicConfig = {
   game: chain.address,
   wif: env.WIF_ADDRESS || WIF_ADDRESS,
   buyUrl: env.BUY_WIF_URL || 'https://worldisflat.fun',
+  beliefs: EARL_BELIEFS,
 };
 
 const publicDir = join(root, 'public');

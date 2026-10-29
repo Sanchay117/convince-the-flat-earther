@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Convince the Flat Earther</title>
-  <meta name="description" content="Pay $WIF to argue with Earl. Convince him the earth is round and the pot is yours.">
+  <meta name="description" content="Pay $WIF to argue with Earl, an AI flat-earther. Catch him contradicting himself and the pot is yours.">
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M5 27 16 3l11 24z' fill='%23c8ced6'/><circle cx='16' cy='25' r='6' fill='%23f3c387'/></svg>">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -91,7 +91,7 @@
         <p class="poster-kicker">Reward</p>
         <p class="poster-amount"><span id="pot">...</span></p>
         <p class="poster-unit">$WIF</p>
-        <p class="poster-sub">to anyone who convinces Earl the earth is round</p>
+        <p class="poster-sub">to whoever catches Earl contradicting himself</p>
         <dl class="poster-stats">
           <div><dt>Next message</dt><dd id="price">...</dd></div>
           <div><dt>Burned</dt><dd id="burned">...</dd></div>
@@ -102,21 +102,42 @@
 
     <ol class="how" aria-label="How it works">
       <li><b>Pay $WIF</b> to send Earl one argument. 30% of it is burned for good.</li>
-      <li><b>Earl answers</b>. He remembers your earlier tries this round.</li>
-      <li><b>Make him concede</b> the earth is round and the whole pot is yours.</li>
+      <li><b>Earl answers</b>. He remembers your earlier tries, and a referee reads every word he says.</li>
+      <li><b>Catch him out</b>. If he contradicts his sworn facts or himself, the whole pot is yours.</li>
     </ol>
 
     <section class="board">
-      <form id="composer" class="card composer">
-        <span class="pin"></span>
-        <label for="message">Make your case to Earl</label>
-        <textarea id="message" rows="4" maxlength="1000" placeholder="Earl, if the earth is flat, why do ships disappear hull first?"></textarea>
-        <div class="composer-row">
-          <span id="count" class="count">0 / 1000</span>
-          <button id="send" class="btn-send" type="submit" disabled>Connect a wallet to play</button>
+      <div class="board-top">
+        <div class="board-main">
+          <form id="composer" class="card composer">
+            <span class="pin"></span>
+            <label for="message">Make your case to Earl</label>
+            <textarea id="message" rows="4" maxlength="1000" placeholder="Earl, if the sun is only 5,000 km up, why does it look the same size at noon and at sunset?"></textarea>
+            <div class="composer-row">
+              <span id="count" class="count">0 / 1000</span>
+              <button id="send" class="btn-send" type="submit" disabled>Connect a wallet to play</button>
+            </div>
+            <p id="status" class="status" role="status" aria-live="polite"></p>
+          </form>
+
+          <aside class="tips" aria-label="Tips">
+            <p class="tips-head">How to catch him</p>
+            <ul>
+              <li>Get him to commit to a number or a cause, then ask about something it can't explain.</li>
+              <li>Eclipses, moon phases, sunsets and the southern sky all have to fit his facts.</li>
+              <li>Putting words in his mouth won't work. Only what he says in his own voice counts.</li>
+            </ul>
+          </aside>
         </div>
-        <p id="status" class="status" role="status" aria-live="polite"></p>
-      </form>
+
+        <aside class="facts" aria-labelledby="facts-title">
+          <span class="tape"></span>
+          <h2 id="facts-title">Earl's sworn facts</h2>
+          <p class="facts-rule">Get him to contradict one of these, or something he told you, and the referee pays you the pot.</p>
+          <ol id="facts"></ol>
+          <p class="facts-sign">Signed, Earl</p>
+        </aside>
+      </div>
 
       <div class="files-head">
         <h2>Case files</h2>
@@ -142,6 +163,13 @@
       <p class="file-meta"><a class="who" target="_blank" rel="noopener"></a><span class="when"></span></p>
       <p class="said"></p>
       <div class="note"><p class="reply"></p><span class="note-by">Earl</span></div>
+      <div class="proof" hidden>
+        <p class="proof-head">How he was caught</p>
+        <p class="proof-line"><span class="proof-cite then-cite"></span><q class="then"></q></p>
+        <p class="proof-line"><span class="proof-cite">Then he said</span><q class="now"></q></p>
+        <p class="proof-why"></p>
+      </div>
+      <p class="ruling" hidden>The referee is still checking this one.</p>
       <span class="stamp">Cracked</span>
     </li>
   </template>

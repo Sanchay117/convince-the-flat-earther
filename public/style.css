@@ -189,10 +189,42 @@ main { max-width: 1080px; margin: 0 auto; padding: 0 20px 56px; }
   box-shadow: 0 1px 1px #0002, 0 10px 20px #0005;
 }
 
+.board-top {
+  display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 28px; align-items: start;
+}
+.board-main { display: grid; gap: 30px; justify-items: start; }
 .composer {
-  max-width: 700px; margin: 0 auto; padding: 26px 26px 18px; display: grid; gap: 12px;
+  width: 100%; padding: 26px 26px 18px; display: grid; gap: 12px;
   border-radius: 3px;
 }
+.tips {
+  max-width: 380px; margin-left: 18px; padding: 16px 20px 14px; color: #1d2b33;
+  background: linear-gradient(180deg, #bfe6f5, #a9dcf0); transform: rotate(-1.4deg);
+  box-shadow: 0 2px 2px #0002, 0 10px 18px #0004;
+}
+.tips-head { margin: 0 0 6px; font: 700 26px/1 var(--hand); }
+.tips ul { margin: 0; padding-left: 18px; font: 500 19px/1.2 var(--hand); }
+.tips li + li { margin-top: 6px; }
+
+/* Earl's sworn facts: a yellow legal pad sheet taped to the board */
+.facts {
+  position: relative; padding: 26px 22px 18px 44px; color: var(--ink);
+  background:
+    linear-gradient(90deg, transparent 32px, #e3908566 32px 34px, transparent 34px),
+    repeating-linear-gradient(transparent 0 25px, #b9c7d966 25px 26px),
+    #fdf3c4;
+  box-shadow: 0 1px 1px #0002, 0 10px 20px #0005;
+  transform: rotate(.7deg);
+}
+.tape {
+  position: absolute; top: -12px; left: 50%; width: 110px; height: 26px; margin-left: -55px;
+  background: #f4ecdcb3; box-shadow: 0 1px 2px #0002; transform: rotate(-3deg);
+}
+.facts h2 { margin: 0; font: 22px var(--display); }
+.facts-rule { margin: 6px 0 12px; font: 600 13px/1.45 var(--sans); color: var(--red-deep); }
+.facts ol { margin: 0; padding-left: 18px; font: 14px/26px var(--typed); }
+.facts li::marker { font-weight: 700; }
+.facts-sign { margin: 8px 0 0; text-align: right; font: 700 24px var(--hand); color: var(--ink); }
 .composer label { font: 22px var(--display); }
 textarea {
   width: 100%; resize: vertical; min-height: 128px; color: var(--ink);
@@ -245,12 +277,23 @@ textarea::placeholder { color: #a39784; }
 .note-by { display: block; margin-top: 6px; text-align: right; font: 700 18px var(--hand); color: var(--red-deep); }
 .note-by::before { content: "\2013  "; }
 .stamp {
-  display: none; position: absolute; top: 40px; right: 14px; padding: 2px 12px;
+  display: none; position: absolute; top: 18px; left: 18px; padding: 2px 12px;
   font: 24px var(--display); color: var(--good); border: 3px solid var(--good); border-radius: 6px;
   transform: rotate(-12deg); text-transform: uppercase; letter-spacing: 2px; background: #fbf8f1d9;
 }
 .file.won .stamp { display: block; }
-.file.won { box-shadow: 0 0 0 3px var(--good), 0 10px 20px #0005; }
+
+.proof {
+  margin: 20px 0 0; padding: 12px 14px; border: 2px dashed var(--good); border-radius: 4px;
+  background: #eef6ef; font: 14px/1.45 var(--typed);
+}
+.proof-head { margin: 0 0 8px; font: 700 11px var(--sans); letter-spacing: 1px; text-transform: uppercase; color: var(--good); }
+.proof-line { margin: 0 0 8px; }
+.proof-cite { display: block; font: 600 12px var(--sans); color: var(--ink-2); }
+.proof q { font-weight: 700; }
+.proof-why { margin: 0; font: 500 13.5px/1.45 var(--sans); color: var(--ink); }
+.ruling { margin: 14px 0 0; font: 500 12.5px var(--sans); color: var(--ink-2); font-style: italic; }
+.file.won { padding-top: 90px; box-shadow: 0 0 0 3px var(--good), 0 10px 20px #0005; }
 
 .foot { max-width: 1080px; margin: 0 auto; padding: 0 20px 36px; color: #8f826e; font-size: 13px; }
 
@@ -262,6 +305,8 @@ textarea::placeholder { color: #a39784; }
   .stage { grid-template-columns: 1fr; gap: 40px; }
   .poster { max-width: 420px; width: 100%; margin: 0 auto; }
   .how { grid-template-columns: 1fr; gap: 10px; }
+  .board-top { grid-template-columns: 1fr; gap: 36px; }
+  .facts { transform: none; }
 }
 
 @media (max-width: 640px) {
@@ -280,6 +325,9 @@ textarea::placeholder { color: #a39784; }
   .poster-amount { font-size: 52px; }
   .board { padding: 28px 14px 30px; border-width: 8px; }
   .composer { padding: 22px 18px 16px; }
+  .tips { margin-left: 6px; }
+  .facts { padding-right: 16px; }
+  .facts ol { font-size: 13px; }
   .files { grid-template-columns: 1fr; }
   .composer-row { flex-direction: column-reverse; align-items: stretch; }
   .count { text-align: right; }

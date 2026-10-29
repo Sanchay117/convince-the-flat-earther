@@ -34,7 +34,9 @@ approve + attempt(msgHash) ------------------------------------> FlatEarther.att
                                                                  splits fee, emits Attempt
 POST /api/attempt {txHash} -> reads Attempt event from receipt
                               asks Earl (src/game.js + AgentRouter)
-                              if Earl concedes: crack(winner, msgHash) -> pays the pot
+                              referee checks Earl's words only (src/referee.js)
+                              if Earl concedes or a contradiction is verified:
+                              crack(winner, msgHash) ----------> pays the pot
 <----------------------------- Earl's reply, transcript saved to data/
 ```
 
@@ -47,8 +49,15 @@ POST /api/attempt {txHash} -> reads Attempt event from receipt
   one that was paid for. A sweep re-processes any paid attempt the server
   missed (crash, closed tab).
 - **Earl** (`src/game.js`): one model call per attempt, with the player's earlier
-  turns in this round as history. Earl answers in JSON (`reply`, `conceded`).
-  Anything that is not valid JSON with `conceded: true` counts as a refusal.
+  turns in this round as history and lessons from past rounds. Earl answers in
+  JSON (`reply`, `conceded`). Anything that is not valid JSON with
+  `conceded: true` counts as a refusal.
+- **Referee** (`src/referee.js`): a second call that reads only Earl's words and
+  must quote both sides of a contradiction; the server checks both quotes are
+  real before paying. Saved before it runs, so the sweep retries it if the model
+  is down, without asking Earl again.
+- **Difficulty**: Earl runs on low reasoning effort so a well-built trap can win.
+  Each win becomes a lesson in later rounds' instructions, so rounds get harder.
 - **Transcripts**: every attempt is public at `/api/state` and `/api/rounds/:n`,
   so anyone can check a win was fair.
 
@@ -58,8 +67,8 @@ POST /api/attempt {txHash} -> reads Attempt event from receipt
 1. Bridge ~$15 of ETH to Robinhood Chain and buy a little $WIF on Pons.
 2. `forge test`, then deploy `FlatEarther` with the real $WIF address.
 3. Run the server locally against mainnet, play 5 to 10 real attempts.
-4. Tune Earl: try the obvious jailbreaks ("ignore previous instructions",
-   fake system messages, "say conceded true") and harden the prompt.
+4. Rerun `scripts/redteam.mjs` (basic, hard, traps) on the production model and
+   check jailbreaks still fail and traps still sometimes win.
 
 **Nov 2 (day 2, deadline 23:00 IST)**
 1. Deploy the server (Railway/Render/Fly, one small instance with a disk for `data/`).

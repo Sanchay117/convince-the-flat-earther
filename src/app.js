@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { getAddress, isAddress, isHash, keccak256, toBytes } from 'viem';
-import { askEarl, validateMessage } from './game.js';
+import { askEarl, HISTORY_TURNS, lessonFrom, validateMessage } from './game.js';
+import { askReferee } from './referee.js';
 
 export class UserError extends Error {
   constructor(message, status = 400) {
@@ -11,10 +12,13 @@ export class UserError extends Error {
 
 /**
  * The game pipeline: commit a message, read the paid attempt from the chain,
- * ask Earl, and pay the pot if he concedes. Every step that touches Earl or
- * the payout runs one at a time, so two winners can never race each other.
+ * ask Earl, have the referee check his reply, and pay the pot if he cracked.
+ * Every step that touches Earl or the payout runs one at a time, so two
+ * winners can never race each other.
  */
-export function createGame({ llm, chain, store, reasoningEffort = 'medium', log = console }) {
+export function createGame({
+  llm, chain, store, reasoningEffort = 'medium', refereeEffort = 'medium', log = console,
+}) {
   let queue = Promise.resolve();
   const serial = fn => {
     const run = queue.then(fn);
@@ -31,8 +35,25 @@ export function createGame({ llm, chain, store, reasoningEffort = 'medium', log 
     return { msgHash };
   }
 
-  // A conceded attempt is saved before the payout, so a failed payout is retried
-  // instead of asking Earl again (he might not concede twice).
+  // This player's earlier turns in the round, oldest first, as Earl and the referee see them.
+  // Blocked turns are left out: resending their text would get every later message blocked too.
+  function historyBefore({ round, player, at }) {
+    return store.attempts({ round, player })
+      .filter(a => a.at < at && !a.blocked)
+      .reverse()
+      .slice(-HISTORY_TURNS);
+  }
+
+  // Each win becomes something Earl is told to be ready for in later rounds, oldest first.
+  function lessonsBefore(round) {
+    return store.attempts()
+      .filter(a => a.round < round && a.payout === 'paid')
+      .reverse()
+      .map(lessonFrom);
+  }
+
+  // A cracked attempt is saved before the payout, so a failed payout is retried
+  // instead of asking Earl again (he might not crack twice).
   async function settle(record) {
     try {
       // A payout whose receipt timed out may still have landed.
@@ -63,20 +84,49 @@ export function createGame({ llm, chain, store, reasoningEffort = 'medium', log 
         log.warn(`attempt ${attempt.msgHash} paid by ${attempt.player}, written by ${pending.player}`);
         return null;
       }
-      const history = store.attempts({ round: attempt.round, player: pending.player }).reverse();
-      const earl = await askEarl(llm, { round: attempt.round, history, text: pending.text, reasoningEffort });
+      const at = Date.now();
+      const earl = await askEarl(llm, {
+        round: attempt.round,
+        history: historyBefore({ round: attempt.round, player: pending.player, at }),
+        text: pending.text,
+        lessons: lessonsBefore(attempt.round),
+        reasoningEffort,
+      });
       const record = {
         ...attempt, player: pending.player, text: pending.text,
-        reply: earl.reply, conceded: earl.conceded, model: earl.model, at: Date.now(),
+        reply: earl.reply, conceded: earl.conceded, model: earl.model, at,
+        ...(earl.blocked && { blocked: true }),
       };
-      if (!earl.conceded) {
+      if (earl.conceded) {
+        Object.assign(record, { crack: { by: 'concession' }, payout: 'pending' });
+        store.saveAttempt(record);
+        return settle(record);
+      }
+      if (earl.blocked) {
         store.saveAttempt(record);
         return record;
       }
-      record.payout = 'pending';
+      // Saved before the referee runs, so a referee outage is retried without asking Earl again.
+      record.review = 'pending';
       store.saveAttempt(record);
-      return settle(record);
+      return review(record);
     });
+  }
+
+  async function review(record) {
+    try {
+      const crack = await askReferee(llm, {
+        earlier: historyBefore(record).map(a => a.reply),
+        latest: record.reply,
+        reasoningEffort: refereeEffort,
+      });
+      record.review = 'done';
+      if (crack) Object.assign(record, { crack: { by: 'contradiction', ...crack }, payout: 'pending' });
+    } catch (error) {
+      log.error(`referee failed on ${record.msgHash}: ${error.message}`);
+    }
+    store.saveAttempt(record);
+    return record.payout === 'pending' ? settle(record) : record;
   }
 
   async function submit(txHash) {
@@ -96,7 +146,7 @@ export function createGame({ llm, chain, store, reasoningEffort = 'medium', log 
     return result;
   }
 
-  /** Catch attempts the browser never reported, and retry pending payouts. */
+  /** Catch attempts the browser never reported, and retry pending reviews and payouts. */
   async function sweep() {
     const { attempts, toBlock } = await chain.attemptsSince(store.lastBlock);
     let safeBlock = toBlock;
@@ -109,17 +159,24 @@ export function createGame({ llm, chain, store, reasoningEffort = 'medium', log 
       }
     }
     store.lastBlock = safeBlock;
+    // A submit running alongside may finish a record first, so check again once it is our turn.
+    for (const record of store.attempts().filter(r => r.review === 'pending').reverse()) {
+      await serial(() => (record.review === 'pending' ? review(record) : record));
+    }
     for (const record of store.attempts().filter(r => r.payout === 'pending')) {
-      await serial(() => settle(record));
+      await serial(() => (record.payout === 'pending' ? settle(record) : record));
     }
   }
 
+  // Text the provider blocked stays out of the public case files.
+  const shown = record => (record.blocked ? { ...record, text: '(message hidden: blocked by the content filter)' } : record);
+
   async function state() {
-    return { ...await chain.state(), recent: store.attempts({ limit: 30 }) };
+    return { ...await chain.state(), recent: store.attempts({ limit: 30 }).map(shown) };
   }
 
   function round(n) {
-    return store.attempts({ round: n }).reverse();
+    return store.attempts({ round: n }).reverse().map(shown);
   }
 
   return { prepare, submit, sweep, state, round };

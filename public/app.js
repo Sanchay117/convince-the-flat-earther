@@ -19,10 +19,16 @@ let ownReply = false;
 
 $('buy').href = config.buyUrl;
 $('contract').href = `${config.explorer}/address/${config.game}`;
+$('facts').replaceChildren(...config.beliefs.map(belief => {
+  const li = document.createElement('li');
+  li.textContent = belief;
+  return li;
+}));
 
 const wif = amount => Number(BigInt(amount) / 10n ** 18n).toLocaleString();
 const short = address => `${address.slice(0, 6)}...${address.slice(-4)}`;
-const won = record => record.conceded && record.payout === 'paid';
+const won = record => record.payout === 'paid';
+const winLine = record => (record.crack?.by === 'concession' ? 'Earl conceded' : 'Caught out');
 const relative = new Intl.RelativeTimeFormat(undefined, { numeric: 'auto' });
 function ago(at) {
   const minutes = Math.round((at - Date.now()) / 60_000);
@@ -66,13 +72,23 @@ function entry(record) {
   li.querySelector('.said').textContent = record.text;
   li.querySelector('.reply').textContent = record.reply;
   li.classList.toggle('won', won(record));
+  const crack = record.crack;
+  if (crack?.by === 'contradiction') {
+    const fact = /^B(\d+)$/.exec(crack.otherRef);
+    li.querySelector('.then-cite').textContent = fact ? `His sworn fact ${fact[1]} says` : 'Earlier he said';
+    li.querySelector('.then').textContent = crack.otherQuote;
+    li.querySelector('.now').textContent = crack.newQuote;
+    li.querySelector('.proof-why').textContent = crack.explanation;
+    li.querySelector('.proof').hidden = false;
+  }
+  li.querySelector('.ruling').hidden = record.review !== 'pending';
   return li;
 }
 
 function renderTicker(recent) {
   const items = recent.slice(0, 12).map(record => {
     const span = document.createElement('span');
-    const verb = won(record) ? `cracked Earl and took the pot` : `burned ${wif(record.burned)} $WIF arguing with Earl`;
+    const verb = won(record) ? 'caught Earl out and took the pot' : `burned ${wif(record.burned)} $WIF arguing with Earl`;
     span.innerHTML = '<b></b> ';
     span.firstChild.textContent = short(record.player);
     span.append(verb);
@@ -112,7 +128,8 @@ async function refresh() {
     }
     const latest = state.recent[0];
     if (latest && !ownReply && !busy) {
-      setBubble(latest.reply, { to: `Earl to ${short(latest.player)}`, win: won(latest) });
+      const to = won(latest) ? `${winLine(latest)} by ${short(latest.player)}` : `Earl to ${short(latest.player)}`;
+      setBubble(latest.reply, { to, win: won(latest) });
     }
   } catch {
     setStatus('Could not load the game. Retrying...', true);
@@ -206,10 +223,13 @@ async function play(event) {
     const record = await post('/api/attempt', { txHash: hash });
     ownReply = true;
     setBubble(record.reply, {
-      to: won(record) ? 'Earl conceded. The pot is yours!' : 'Earl to you',
+      to: won(record) ? `${winLine(record)}! The pot is yours` : 'Earl to you',
       win: won(record),
     });
     if (won(record)) setStatus(`Payout sent: ${config.explorer}/tx/${record.crackTx}`);
+    else if (record.payout === 'pending') setStatus('You caught him! The payout is being retried and will reach your wallet shortly.');
+    else if (record.payout === 'too-late') setStatus('You caught him, but someone else won this round a moment earlier.', true);
+    else if (record.review === 'pending') setStatus('The referee is still checking his reply. Any win is paid automatically.');
     $('message').value = '';
     $('count').textContent = '0 / 1000';
   } catch (error) {

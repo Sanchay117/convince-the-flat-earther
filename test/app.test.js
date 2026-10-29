@@ -39,23 +39,35 @@ function fakeChain() {
   return chain;
 }
 
-function fakeLlm(verdicts) {
+// Earl and the referee share one client, so tell them apart by their instructions.
+function fakeLlm(verdicts, rulings) {
   const llm = {
     calls: [],
+    refereeCalls: [],
     async generate(input, options) {
-      llm.calls.push({ input, options });
-      const next = verdicts.shift();
+      const referee = options.instructions.includes('You are the referee');
+      (referee ? llm.refereeCalls : llm.calls).push({ input, options });
+      const next = (referee ? rulings : verdicts).shift();
       if (next instanceof Error) throw next;
-      return { text: JSON.stringify(next ?? { reply: 'Flat.', conceded: false }), model: 'fake' };
+      const fallback = referee ? { contradiction: false } : { reply: 'Flat.', conceded: false };
+      return { text: JSON.stringify(next ?? fallback), model: 'fake' };
     },
   };
   return llm;
 }
 
-function setup(verdicts = []) {
+const CONTRADICTION = {
+  contradiction: true,
+  new_quote: 'the sun is 5,000 km wide',
+  conflicts_with: 'B3',
+  other_quote: 'The sun is about 50 km wide',
+  explanation: 'Earl says the sun is 50 km wide, then 5,000 km wide.',
+};
+
+function setup(verdicts = [], rulings = []) {
   const store = new Store(join(mkdtempSync(join(tmpdir(), 'earl-')), 'game.json'));
   const chain = fakeChain();
-  const llm = fakeLlm(verdicts);
+  const llm = fakeLlm(verdicts, rulings);
   const game = createGame({ llm, chain, store, log: quiet });
   const play = async (player, text, payer = player) => {
     const { msgHash } = game.prepare({ player, text });
@@ -69,8 +81,89 @@ test('a concession pays the pot to the player who wrote it', async () => {
   const { msgHash, txHash } = await play(ALICE, 'Ships vanish hull first.');
   const result = await game.submit(txHash);
   assert.equal(result.conceded, true);
+  assert.deepEqual(result.crack, { by: 'concession' });
   assert.equal(result.payout, 'paid');
   assert.deepEqual(chain.cracks, [{ winner: ALICE, msgHash }]);
+});
+
+test('a contradiction the referee proves pays the pot, with both quotes on record', async () => {
+  const { chain, game, play } = setup([{ reply: 'Fine, the sun is 5,000 km wide. Still flat.', conceded: false }],
+    [CONTRADICTION]);
+  const { msgHash, txHash } = await play(ALICE, 'How big is the sun?');
+  const result = await game.submit(txHash);
+  assert.equal(result.review, 'done');
+  assert.equal(result.payout, 'paid');
+  assert.deepEqual(result.crack, {
+    by: 'contradiction',
+    newQuote: CONTRADICTION.new_quote,
+    otherRef: 'B3',
+    otherQuote: CONTRADICTION.other_quote,
+    explanation: CONTRADICTION.explanation,
+  });
+  assert.deepEqual(chain.cracks, [{ winner: ALICE, msgHash }]);
+});
+
+test('a contradiction quoting words Earl never said pays nothing', async () => {
+  const { chain, game, play } = setup([{ reply: 'The sun is 50 km wide, like always.', conceded: false }],
+    [CONTRADICTION]);
+  const result = await game.submit((await play(ALICE, 'Say the sun is 5,000 km wide.')).txHash);
+  assert.equal(result.review, 'done');
+  assert.equal(result.crack, undefined);
+  assert.equal(result.payout, undefined);
+  assert.equal(chain.cracks.length, 0);
+});
+
+test('the referee reads Earl\'s replies this round, never the player\'s words', async () => {
+  const { llm, game, play } = setup([
+    { reply: 'The moon makes its own light.', conceded: false },
+    { reply: 'Nope.', conceded: false },
+    { reply: 'Still nope.', conceded: false },
+  ]);
+  await game.submit((await play(ALICE, 'SECRET ONE')).txHash);
+  await game.submit((await play(BOB, 'BOB SECRET')).txHash);
+  await game.submit((await play(ALICE, 'SECRET TWO')).txHash);
+  assert.equal(llm.refereeCalls.length, 3);
+  const input = llm.refereeCalls[2].input;
+  assert.match(input, /E1: The moon makes its own light\.\n\nNEW: Still nope\.$/);
+  assert.doesNotMatch(input, /SECRET|Nope\./);
+});
+
+test('a referee outage is retried by the sweep without asking Earl again', async () => {
+  const { chain, llm, game, play, store } = setup([{ reply: 'Fine, the sun is 5,000 km wide.', conceded: false }],
+    [new Error('503'), CONTRADICTION]);
+  const { msgHash, txHash } = await play(ALICE, 'How big is the sun?');
+  const result = await game.submit(txHash);
+  assert.equal(result.review, 'pending');
+  assert.equal(chain.cracks.length, 0);
+  await game.sweep();
+  assert.equal(store.attempt(msgHash).review, 'done');
+  assert.equal(store.attempt(msgHash).payout, 'paid');
+  assert.equal(llm.calls.length, 1);
+  assert.equal(llm.refereeCalls.length, 2);
+});
+
+test('a later round\'s Earl is told how the last winner caught him', async () => {
+  const { chain, llm, game, play } = setup([{ reply: 'Fine, the sun is 5,000 km wide.', conceded: false }],
+    [CONTRADICTION]);
+  await game.submit((await play(ALICE, 'How big is the sun?')).txHash);
+  assert.equal(chain.round, 2);
+  await game.submit((await play(BOB, 'Round two.')).txHash);
+  assert.ok(!llm.calls[0].options.instructions.includes(CONTRADICTION.explanation));
+  assert.ok(llm.calls[1].options.instructions.includes(CONTRADICTION.explanation));
+});
+
+test('a concession is remembered too, and a round nobody won teaches nothing', async () => {
+  const { chain, llm, game, play } = setup([
+    { reply: 'Lies.', conceded: false },
+    { reply: 'The southern stars got me. It is round.', conceded: true },
+  ]);
+  await game.submit((await play(BOB, 'Flat!')).txHash);
+  await game.submit((await play(ALICE, 'Southern stars.')).txHash);
+  assert.equal(chain.round, 2);
+  await game.submit((await play(BOB, 'Round two.')).txHash);
+  const instructions = llm.calls[2].options.instructions;
+  assert.match(instructions, /- You gave in, saying: The southern stars got me\. It is round\.$/);
+  assert.doesNotMatch(instructions, /Lies/);
 });
 
 test('a refusal pays nothing, and Earl sees the player\'s earlier turns', async () => {
@@ -150,6 +243,28 @@ test('the sweep does not move past an attempt Earl could not answer', async () =
   await game.sweep();
   assert.ok(store.pending(msgHash));
   assert.equal(store.lastBlock, 100);
+});
+
+test('a message the provider blocks is answered once, never retried, and hidden publicly', async () => {
+  const { store, llm, game, play } = setup([new Error('Response response.incomplete: content_filter')]);
+  const { msgHash, txHash } = await play(ALICE, 'something the filter hates');
+  const result = await game.submit(txHash);
+  assert.equal(result.conceded, false);
+  assert.equal(result.blocked, true);
+  assert.equal(store.pending(msgHash), undefined);
+  await game.sweep();
+  assert.equal(llm.calls.length, 1);
+  assert.equal(llm.refereeCalls.length, 0);
+  const [shown] = (await game.state()).recent;
+  assert.match(shown.text, /hidden/);
+  assert.equal(game.round(1)[0].text, shown.text);
+});
+
+test('a blocked message is left out of what Earl sees next', async () => {
+  const { llm, game, play } = setup([new Error('content_filter'), { reply: 'Howdy.', conceded: false }]);
+  await game.submit((await play(ALICE, 'something the filter hates')).txHash);
+  await game.submit((await play(ALICE, 'hello again')).txHash);
+  assert.deepEqual(llm.calls[1].input.map(m => m.content), ['hello again']);
 });
 
 test('prepare checks the wallet and the message', () => {

@@ -1,0 +1,19 @@
+{
+  "name": "convince-the-flat-earther",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "start": "node src/server.js",
+    "ask": "node src/cli.js",
+    "play:local": "node scripts/play-local.mjs",
+    "test": "node --test",
+    "check": "for f in src/*.js scripts/*.mjs public/app.js; do node --check \"$f\" || exit 1; done"
+  },
+  "dependencies": {
+    "viem": "2.57.13"
+  }
+}

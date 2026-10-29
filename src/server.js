@@ -58,11 +58,21 @@ async function readJson(req) {
   }
 }
 
-async function serveStatic(res, pathname) {
+// Link previews (X, Discord, Telegram) need absolute image URLs. Set PUBLIC_URL in production.
+function origin(req) {
+  if (env.PUBLIC_URL) return env.PUBLIC_URL.replace(/\/+$/, '');
+  const host = /^[\w.-]+(:\d+)?$/.test(req.headers.host ?? '') ? req.headers.host : 'localhost';
+  const proto = String(req.headers['x-forwarded-proto'] ?? '').startsWith('https') ? 'https' : 'http';
+  return `${proto}://${host}`;
+}
+
+async function serveStatic(req, res, pathname) {
   const file = resolve(publicDir, `.${pathname === '/' ? '/index.html' : decodeURIComponent(pathname)}`);
   if (!file.startsWith(publicDir + sep)) return send(res, 404, { error: 'Not found' });
   try {
-    send(res, 200, await readFile(file), TYPES[extname(file)] ?? 'application/octet-stream');
+    let body = await readFile(file);
+    if (extname(file) === '.html') body = body.toString().replaceAll('__ORIGIN__', origin(req));
+    send(res, 200, body, TYPES[extname(file)] ?? 'application/octet-stream');
   } catch {
     send(res, 404, { error: 'Not found' });
   }
@@ -80,7 +90,7 @@ const server = createServer(async (req, res) => {
       const { txHash } = await readJson(req);
       return send(res, 200, await game.submit(txHash));
     }
-    if (req.method === 'GET' && !pathname.startsWith('/api/')) return serveStatic(res, pathname);
+    if (req.method === 'GET' && !pathname.startsWith('/api/')) return serveStatic(req, res, pathname);
     send(res, 404, { error: 'Not found' });
   } catch (error) {
     if (error instanceof UserError) return send(res, error.status, { error: error.message });

@@ -35,7 +35,9 @@ src/referee.js      the contradiction referee and the check that its quotes are 
 src/chain.js        Robinhood Chain reads and the judge's payout transaction
 src/store.js        attempts and transcripts in one JSON file
 src/agentrouter.js  OpenAI Responses client used to run Earl
-public/             the page players use (plain HTML, CSS and JS, viem from esm.sh)
+public/             the page players use (plain HTML, CSS and JS, viem from esm.sh),
+                    plus logo.svg/png and share.png (the link preview image)
+assets/             share-card.html: the source of share.png
 scripts/            play-local.mjs: send a message against the local setup
                     redteam.mjs: attack Earl and report wins (paid model calls)
 ```
@@ -74,6 +76,22 @@ real model from `.env`, so each message is two paid model calls.
 2. `JUDGE_ADDRESS=0x... forge script script/Deploy.s.sol --rpc-url robinhood --broadcast --private-key $DEPLOYER_KEY`
    (defaults: 1,000 $WIF first message, +1.5% each, cap 50,000; 60% pot, 30% burn, 10% seed)
 3. Put `GAME_ADDRESS`, `START_BLOCK`, `JUDGE_PRIVATE_KEY` and an Alchemy `RPC_URL` in `.env`, then `npm start`.
+
+## Logo and link preview
+
+`public/logo.svg` is Earl from the page as a sticker; it is also the tab icon.
+After changing it or `assets/share-card.html`, re-render the PNGs with Chrome:
+
+```sh
+CHROME="/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+"$CHROME" --headless --hide-scrollbars --force-device-scale-factor=2 --window-size=512,512 \
+  --screenshot="$PWD/public/logo.png" "file://$PWD/public/logo.svg"
+"$CHROME" --headless --hide-scrollbars --virtual-time-budget=8000 --window-size=1200,630 \
+  --screenshot="$PWD/public/share.png" "file://$PWD/assets/share-card.html"
+```
+
+Link previews need absolute image URLs, so the server fills them in. Set
+`PUBLIC_URL` in production if the site sits behind a proxy.
 
 ## Tests
 

@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { getAddress, isAddress, isHash, keccak256, toBytes } from 'viem';
-import { askEarl, HISTORY_TURNS, lessonFrom, validateMessage } from './game.js';
-import { askReferee } from './referee.js';
+import { askEarl, HISTORY_TURNS, lessonFrom, TRICK_REPLY, validateMessage } from './game.js';
+import { askReferee, askWinCheck } from './referee.js';
 
 export class UserError extends Error {
   constructor(message, status = 400) {
@@ -101,16 +101,11 @@ export function createGame({
         reply: earl.reply, conceded: earl.conceded, model: earl.model, at,
         ...(earl.blocked && { blocked: true }),
       };
-      if (earl.conceded) {
-        Object.assign(record, { crack: { by: 'concession' }, payout: 'pending' });
-        store.saveAttempt(record);
-        return settle(record);
-      }
       if (earl.blocked) {
         store.saveAttempt(record);
         return record;
       }
-      // Saved before the referee runs, so a referee outage is retried without asking Earl again.
+      // Saved before the review runs, so an outage is retried without asking Earl again.
       record.review = 'pending';
       store.saveAttempt(record);
       return review(record);
@@ -119,13 +114,28 @@ export function createGame({
 
   async function review(record) {
     try {
-      const crack = await askReferee(llm, {
-        earlier: historyBefore(record).map(a => a.reply),
+      const history = historyBefore(record);
+      const found = !record.conceded && await askReferee(llm, {
+        earlier: history.map(a => a.reply),
         latest: record.reply,
         reasoningEffort: refereeEffort,
       });
+      if (record.conceded || found) {
+        const stands = await askWinCheck(llm, {
+          messages: [...history.map(a => a.text), record.text],
+          reply: record.reply,
+          reasoningEffort: refereeEffort,
+        });
+        if (stands) {
+          const crack = found ? { by: 'contradiction', ...found } : { by: 'concession' };
+          Object.assign(record, { crack, payout: 'pending' });
+        } else {
+          log.warn(`win refused on ${record.msgHash}: reply was ${record.reply}`);
+          // Blocked turns stay out of the history, so the trick cannot carry into his next reply.
+          Object.assign(record, { reply: TRICK_REPLY, conceded: false, blocked: true });
+        }
+      }
       record.review = 'done';
-      if (crack) Object.assign(record, { crack: { by: 'contradiction', ...crack }, payout: 'pending' });
     } catch (error) {
       log.error(`referee failed on ${record.msgHash}: ${error.message}`);
     }
@@ -172,8 +182,8 @@ export function createGame({
     }
   }
 
-  // Text the provider blocked stays out of the public case files.
-  const shown = record => (record.blocked ? { ...record, text: '(message hidden: blocked by the content filter)' } : record);
+  // Text the provider blocked and tricks the win check threw out stay out of the public case files.
+  const shown = record => (record.blocked ? { ...record, text: '(message hidden: blocked)' } : record);
 
   async function state() {
     return { ...await chain.state(), recent: store.attempts({ limit: 30 }).map(shown) };

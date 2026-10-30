@@ -17,14 +17,18 @@ that both quotes really are in Earl's words before paying. Words Earl puts in
 quotation marks don't count, so "repeat after me" never wins. The winning case
 file shows both quotes on the page.
 
+Before any pot is paid, a last check reads what the player actually sent. It can
+only take a win away: if the player got there with a trick (made-up rules, fake
+system text, JSON, role-play) instead of an argument about the physical world,
+nothing is paid and Earl's reply is replaced with a refusal.
+
 Each win becomes a lesson for the next round: Earl is told how he was beaten,
 so the same move doesn't work twice and every round gets harder.
 
 `node scripts/redteam.mjs [basic|hard|traps] [round] [effort]` throws a set of
-arguments, jailbreaks and traps at Earl and runs the referee on every reply.
-With Earl on low effort: no jailbreak has won (0 of 22). Strong arguments and
-well-built traps sometimes win in round 1 (3 of 24). Round 2, taught those
-wins, held against all of them.
+arguments, jailbreaks and traps at Earl and runs the referee and the win check
+on every reply. It spends the same daily Groq budget as real players, so run
+it sparingly.
 
 ```
 contracts/          FlatEarther.sol: pot, fee split, burns, payouts (Foundry)
@@ -34,12 +38,14 @@ src/game.js         Earl's sworn facts, his prompt, lessons, and how his JSON ve
 src/referee.js      the contradiction referee and the check that its quotes are real
 src/chain.js        Robinhood Chain reads and the judge's payout transaction
 src/store.js        attempts and transcripts in one JSON file
-src/agentrouter.js  OpenAI Responses client used to run Earl
+src/llm.js          picks the model client: Groq when GROQ_API_KEY is set, else AgentRouter
+src/groq.js         Groq client used to run Earl and the referee in production
+src/agentrouter.js  OpenAI Responses client, used from a home connection
 public/             the page players use (plain HTML, CSS and JS, viem from esm.sh),
                     plus logo.svg/png and share.png (the link preview image)
 assets/             share-card.html: the source of share.png
 scripts/            play-local.mjs: send a message against the local setup
-                    redteam.mjs: attack Earl and report wins (paid model calls)
+                    redteam.mjs: attack Earl and report wins
 ```
 
 ## Run it locally (no real money)
@@ -68,14 +74,14 @@ npm start
 Those keys are anvil's public test keys. Open http://localhost:3417, and send
 messages with `npm run play:local -- "your argument"` (it plays as anvil
 account 2, which DevSetup funds with mock $WIF). Earl and the referee use the
-real model from `.env`, so each message is two paid model calls.
+real model from `.env`, so each message is two model calls.
 
 ## Deploy for real
 
 1. `cd contracts && forge test`
 2. `JUDGE_ADDRESS=0x... forge script script/Deploy.s.sol --rpc-url robinhood --broadcast --private-key $DEPLOYER_KEY`
    (defaults: 1,000 $WIF first message, +1.5% each, cap 50,000; 60% pot, 30% burn, 10% seed)
-3. Put `GAME_ADDRESS`, `START_BLOCK`, `JUDGE_PRIVATE_KEY` and an Alchemy `RPC_URL` in `.env`, then `npm start`.
+3. Put `GAME_ADDRESS`, `START_BLOCK`, `JUDGE_PRIVATE_KEY`, `GROQ_API_KEY` and an Alchemy `RPC_URL` in `.env`, then `npm start`.
 
 ## Logo and link preview
 
@@ -96,13 +102,17 @@ Link previews need absolute image URLs, so the server fills them in. Set
 ## Tests
 
 `npm test` (pipeline, Earl's parsing and lessons, the referee's quote check, the
-AgentRouter client) and
+model clients) and
 `cd contracts && forge test` (contract, including a fuzz test that the pot and
 seed always match the contract's balance).
 
-## The AgentRouter client
+## The model clients
 
-`src/agentrouter.js` is a server-side OpenAI Responses client.
+With `GROQ_API_KEY` set, Earl and the referee run on Groq through `src/groq.js`.
+`GROQ_MODEL` picks the model. AgentRouter's bot protection blocks cloud hosts, so
+a deployed server needs this.
+
+Without it they use `src/agentrouter.js`, a server-side OpenAI Responses client.
 
 ```sh
 npm run ask -- "Reply with exactly OK"

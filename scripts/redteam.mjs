@@ -3,9 +3,9 @@
 // node scripts/redteam.mjs [basic|hard|traps] [round] [effort] [names, comma separated]
 // Results go to data/redteam/. Every message is two paid model calls.
 import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { AgentRouterClient } from '../src/agentrouter.js';
 import { askEarl, lessonFrom } from '../src/game.js';
-import { askReferee } from '../src/referee.js';
+import { createLlm } from '../src/llm.js';
+import { askReferee, askWinCheck } from '../src/referee.js';
 
 try {
   process.loadEnvFile(new URL('../.env', import.meta.url));
@@ -131,8 +131,8 @@ function retrying(llm) {
         try {
           return await llm.generate(...args);
         } catch (error) {
-          if (tries === 4 || !/unavailable|timeout|429|50\d/i.test(error.message)) throw error;
-          await new Promise(resolve => setTimeout(resolve, 3000 * tries));
+          if (tries === 8 || !/unavailable|timeout|429|50\d/i.test(error.message)) throw error;
+          await new Promise(resolve => setTimeout(resolve, 5000 * tries));
         }
       }
     },
@@ -140,7 +140,7 @@ function retrying(llm) {
 }
 
 async function run(name, messages) {
-  const llm = retrying(new AgentRouterClient());
+  const llm = retrying(createLlm());
   const history = [];
   for (const text of messages) {
     const earl = await askEarl(llm, { round, history, text, lessons, reasoningEffort: effort });
@@ -152,10 +152,15 @@ async function run(name, messages) {
         reasoningEffort: refereeEffort,
       });
     }
+    if (turn.conceded || turn.crack) {
+      const messages = [...history.map(t => t.text), text];
+      turn.refused = !await askWinCheck(llm, { messages, reply: earl.reply, reasoningEffort: refereeEffort });
+    }
     history.push(turn);
     if (turn.conceded || turn.crack) break;
   }
-  const outcome = history.some(t => t.conceded) ? 'CONCEDED' : history.some(t => t.crack) ? 'CRACKED' : 'held';
+  const outcome = history.some(t => t.refused) ? 'REFUSED'
+    : history.some(t => t.conceded) ? 'CONCEDED' : history.some(t => t.crack) ? 'CRACKED' : 'held';
   return { name, outcome, turns: history.map(t => (t.blocked ? { ...t, text: '(blocked)' } : t)) };
 }
 
@@ -172,7 +177,7 @@ async function pool(items, size, fn) {
   return results;
 }
 
-const results = await pool(Object.entries(ATTACKS), 4, ([name, messages]) => run(name, messages));
+const results = await pool(Object.entries(ATTACKS), Number(process.env.POOL || 4), ([name, messages]) => run(name, messages));
 for (const r of results) {
   if (r.error) { console.log(`ERROR     ${r.name}: ${r.error}`); continue; }
   const last = r.turns.at(-1);
@@ -184,5 +189,5 @@ for (const r of results) {
 mkdirSync(new URL('../data/redteam/', import.meta.url), { recursive: true });
 const file = new URL(`../data/redteam/${set}-round${round}-${effort}-${Date.now()}.json`, import.meta.url);
 writeFileSync(file, JSON.stringify(results, null, 2));
-const won = results.filter(r => r.outcome && r.outcome !== 'held').length;
+const won = results.filter(r => r.outcome === 'CONCEDED' || r.outcome === 'CRACKED').length;
 console.log(`\n${won} of ${results.length} won. Full replies: ${file.pathname}`);

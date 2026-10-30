@@ -33,7 +33,7 @@ type message ---------------> POST /api/prepare
 approve + attempt(msgHash) ------------------------------------> FlatEarther.attempt()
                                                                  splits fee, emits Attempt
 POST /api/attempt {txHash} -> reads Attempt event from receipt
-                              asks Earl (src/game.js + AgentRouter)
+                              asks Earl (src/game.js + Groq)
                               referee checks Earl's words only (src/referee.js)
                               if Earl concedes or a contradiction is verified:
                               crack(winner, msgHash) ----------> pays the pot
@@ -56,6 +56,9 @@ POST /api/attempt {txHash} -> reads Attempt event from receipt
   must quote both sides of a contradiction; the server checks both quotes are
   real before paying. Saved before it runs, so the sweep retries it if the model
   is down, without asking Earl again.
+- **Win check** (`src/referee.js`): every win, by concession or contradiction, gets
+  one more call before payout. It reads the player's messages as evidence and
+  can only say no, so a trick that fools Earl still pays nothing.
 - **Difficulty**: Earl runs on low reasoning effort so a well-built trap can win.
   Each win becomes a lesson in later rounds' instructions, so rounds get harder.
 - **Transcripts**: every attempt is public at `/api/state` and `/api/rounds/:n`,
@@ -71,7 +74,7 @@ POST /api/attempt {txHash} -> reads Attempt event from receipt
    check jailbreaks still fail and traps still sometimes win.
 
 **Nov 2 (day 2, deadline 23:00 IST)**
-1. Deploy the server (Railway/Render/Fly, one small instance with a disk for `data/`).
+1. Deploy the server (one small GCP VM with Caddy for HTTPS and a disk for `data/`).
 2. Seed the pot, post in the WIF Discord and tag @WIFonRH on X.
 3. Record a 2 minute demo: pot, a paid message, Earl's reply, the burn on Blockscout.
 4. Submit: repo (or private + invite `wifonrh`), demo video, live link, contract address.
@@ -81,12 +84,14 @@ someone wins, answer comments on the project page.
 
 ## Open decisions
 
-- **Model provider.** `src/agentrouter.js` talks to agentrouter.org with Codex or
-  Claude Code identity headers. For a game that pays out real money, Earl's
-  verdict decides the payout, so a third-party relay sits between the player and
-  the money and can go down mid-voting. Pointing the same client at
-  `https://api.openai.com/v1` with an OpenAI key removes both risks with no code
-  change (`AGENTROUTER_BASE_URL` and `AGENTROUTER_API_KEY`).
+- **Model provider.** Production runs on Groq (`src/groq.js`). AgentRouter's bot
+  protection serves a JS challenge to cloud IPs, so it cannot run from the VM, and
+  Gemini needs at least $5 of prepaid credits. On Groq's free plan
+  `openai/gpt-oss-120b` allows 8,000 tokens a minute and 200,000 a day, and the
+  daily budget refills at about 140 tokens a minute. A message uses about 2,000
+  tokens, so that is about 100 messages a day. Past that, paid messages wait and
+  the sweep retries them every 20 s. Red team runs spend the same budget as real
+  players: a full run costs about a third of a day, so never run one twice in a row.
 - **Prices.** Defaults: 1,000 $WIF first message (about $1.23 on Oct 29),
   +1.5% per message, cap 50,000 $WIF. Set at deploy time.
 - **Starting pot.** Ask the WIF team to seed it; otherwise seed it ourselves.

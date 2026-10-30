@@ -2,10 +2,10 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { extname, join, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { AgentRouterClient } from './agentrouter.js';
 import { createGame, UserError } from './app.js';
 import { createChain, EXPLORER, PUBLIC_RPC, WIF_ADDRESS, robinhood } from './chain.js';
 import { EARL_BELIEFS } from './game.js';
+import { createLlm } from './llm.js';
 import { Store } from './store.js';
 
 const root = fileURLToPath(new URL('..', import.meta.url));
@@ -20,7 +20,7 @@ const store = new Store(resolve(root, env.DATA_FILE || 'data/game.json'));
 if (store.lastBlock == null && env.START_BLOCK) store.lastBlock = Number(env.START_BLOCK) - 1;
 const chain = createChain({ rpcUrl: env.RPC_URL || PUBLIC_RPC, address: env.GAME_ADDRESS, judgeKey: env.JUDGE_PRIVATE_KEY });
 const game = createGame({
-  llm: new AgentRouterClient(), chain, store,
+  llm: createLlm(), chain, store,
   reasoningEffort: env.EARL_EFFORT || 'low',
   refereeEffort: env.REFEREE_EFFORT || 'medium',
 });

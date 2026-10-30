@@ -16,6 +16,8 @@ let account = null;
 let busy = false;
 // Once the player has their own reply in the bubble, refreshes leave it alone.
 let ownReply = false;
+// The player's paid message that is still being answered, reviewed or paid out.
+let awaiting = null;
 
 $('buy').href = config.buyUrl;
 $('contract').href = `${config.explorer}/address/${config.game}`;
@@ -104,6 +106,20 @@ function renderTicker(recent) {
   $('ticker').replaceChildren(...items, ...items.map(item => item.cloneNode(true)));
 }
 
+function showResult(record) {
+  ownReply = true;
+  awaiting = record.review === 'pending' || record.payout === 'pending' ? record.txHash : null;
+  setBubble(record.reply, {
+    to: won(record) ? `${winLine(record)}! The pot is yours` : 'Earl to you',
+    win: won(record),
+  });
+  if (won(record)) setStatus(`Payout sent: ${config.explorer}/tx/${record.crackTx}`);
+  else if (record.payout === 'pending') setStatus('You caught him! The payout is being retried and will reach your wallet shortly.');
+  else if (record.payout === 'too-late') setStatus('You caught him, but someone else won this round a moment earlier.', true);
+  else if (record.review === 'pending') setStatus('The referee is still checking his reply. Any win is paid automatically.');
+  else setStatus('');
+}
+
 async function refresh() {
   try {
     const previousPot = state?.pot;
@@ -126,8 +142,10 @@ async function refresh() {
     } else {
       $('feed').innerHTML = '<li class="empty">No case files yet. Be the first to argue.</li>';
     }
+    const mine = awaiting && state.recent.find(record => record.txHash === awaiting);
+    if (mine) showResult(mine);
     const latest = state.recent[0];
-    if (latest && !ownReply && !busy) {
+    if (latest && !ownReply && !busy && !awaiting) {
       const to = won(latest) ? `${winLine(latest)} by ${short(latest.player)}` : `Earl to ${short(latest.player)}`;
       setBubble(latest.reply, { to, win: won(latest) });
     }
@@ -194,6 +212,7 @@ async function play(event) {
   const text = $('message').value.trim();
   if (!account || !text || busy) return;
   busy = true;
+  let paid = false;
   renderButton();
   try {
     await ensureChain();
@@ -220,21 +239,15 @@ async function play(event) {
     await reader.waitForTransactionReceipt({ hash });
     setStatus('');
     setBubble('Hmm', { to: 'Earl is reading your argument', thinking: true });
-    const record = await post('/api/attempt', { txHash: hash });
-    ownReply = true;
-    setBubble(record.reply, {
-      to: won(record) ? `${winLine(record)}! The pot is yours` : 'Earl to you',
-      win: won(record),
-    });
-    if (won(record)) setStatus(`Payout sent: ${config.explorer}/tx/${record.crackTx}`);
-    else if (record.payout === 'pending') setStatus('You caught him! The payout is being retried and will reach your wallet shortly.');
-    else if (record.payout === 'too-late') setStatus('You caught him, but someone else won this round a moment earlier.', true);
-    else if (record.review === 'pending') setStatus('The referee is still checking his reply. Any win is paid automatically.');
+    // It is paid for from here on, so the server will answer even if this request fails.
+    paid = true;
+    awaiting = hash;
     $('message').value = '';
     $('count').textContent = '0 / 1000';
+    showResult(await post('/api/attempt', { txHash: hash }));
   } catch (error) {
-    $('bubble').classList.remove('thinking');
-    setStatus(error.shortMessage ?? error.message, true);
+    if (!paid) $('bubble').classList.remove('thinking');
+    setStatus(error.shortMessage ?? error.message, !paid);
   } finally {
     busy = false;
     await refresh();

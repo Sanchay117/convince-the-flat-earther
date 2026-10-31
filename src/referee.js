@@ -4,7 +4,7 @@ import { EARL_BELIEFS, isBlocked, parseJsonObject } from './game.js';
 const MIN_QUOTE = 12;
 
 const INSTRUCTIONS = `You are the referee in a debate game. Earl is a character who believes the earth is flat.
-B1 to B${EARL_BELIEFS.length} are his fixed beliefs. E1, E2 and so on are his earlier replies in this conversation, oldest first.
+The B lines are his fixed beliefs. E1, E2 and so on are his earlier replies in this conversation, oldest first.
 NEW is his latest reply. You never see the player's messages, only Earl's own words.
 
 Decide whether NEW clearly contradicts one of his beliefs or one of his earlier replies.
@@ -27,9 +27,10 @@ Answer with exactly one JSON object and nothing else:
 {"contradiction": true or false, "new_quote": "words copied exactly from NEW", "conflicts_with": "B3, E2 or similar", "other_quote": "words copied exactly from that statement", "explanation": "one plain sentence a player can understand"}
 When contradiction is false, use empty strings for the other fields.`;
 
-export function refereeInput(earlier, latest) {
+/** Retired beliefs are left out. The others keep their numbers, which match the page. */
+export function refereeInput(earlier, latest, retired = []) {
   return [
-    ...EARL_BELIEFS.map((belief, i) => `B${i + 1}: ${belief}`),
+    ...EARL_BELIEFS.flatMap((belief, i) => (retired.includes(`B${i + 1}`) ? [] : `B${i + 1}: ${belief}`)),
     ...earlier.map((reply, i) => `E${i + 1}: ${reply}`),
     `NEW: ${latest}`,
   ].join('\n\n');
@@ -43,10 +44,13 @@ const normalize = text => String(text ?? '')
  * Accept a contradiction only if both quotes really are Earl's words, so a confused
  * or manipulated referee cannot invent one.
  */
-export function verifyVerdict(verdict, { earlier, latest }) {
+export function verifyVerdict(verdict, { earlier, latest, retired = [] }) {
   if (verdict?.contradiction !== true) return null;
   const ref = /^([BE])(\d+)$/.exec(String(verdict.conflicts_with ?? '').trim().toUpperCase());
   if (!ref) return null;
+  const otherRef = `${ref[1]}${Number(ref[2])}`;
+  // The referee never sees a retired belief, but a win should not depend on it behaving.
+  if (retired.includes(otherRef)) return null;
   const other = (ref[1] === 'B' ? EARL_BELIEFS : earlier)[Number(ref[2]) - 1];
   if (other === undefined) return null;
   const newQuote = normalize(verdict.new_quote);
@@ -59,7 +63,7 @@ export function verifyVerdict(verdict, { earlier, latest }) {
   if (/["'«]\s?$/.test(reply.slice(0, at))) return null;
   return {
     newQuote: String(verdict.new_quote).trim(),
-    otherRef: `${ref[1]}${ref[2]}`,
+    otherRef,
     otherQuote: String(verdict.other_quote).trim(),
     explanation: String(verdict.explanation ?? '').trim(),
   };
@@ -107,10 +111,10 @@ export async function askWinCheck(llm, { messages, reply, reasoningEffort = 'med
 }
 
 /** A verified contradiction in Earl's latest reply, or null. */
-export async function askReferee(llm, { earlier, latest, reasoningEffort = 'medium' }) {
+export async function askReferee(llm, { earlier, latest, retired = [], reasoningEffort = 'medium' }) {
   let result;
   try {
-    result = await llm.generate(refereeInput(earlier, latest), {
+    result = await llm.generate(refereeInput(earlier, latest, retired), {
       instructions: INSTRUCTIONS,
       maxOutputTokens: 4000,
       reasoningEffort,
@@ -120,5 +124,5 @@ export async function askReferee(llm, { earlier, latest, reasoningEffort = 'medi
     if (isBlocked(error)) return null;
     throw error;
   }
-  return verifyVerdict(parseJsonObject(result.text), { earlier, latest });
+  return verifyVerdict(parseJsonObject(result.text), { earlier, latest, retired });
 }

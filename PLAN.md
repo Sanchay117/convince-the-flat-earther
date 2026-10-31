@@ -7,7 +7,7 @@ The app must stay live until the final closes on **Nov 6, 17:30 UTC**.
 
 Earl is an AI who is certain the world is flat. A pot of $WIF sits on the table.
 Pay $WIF to send Earl a message. If you get Earl to admit the earth is round, the
-whole pot is yours and a new round starts with a tougher Earl.
+whole pot is yours and a new round starts with an Earl who knows how he lost.
 
 Every paid message is split three ways:
 
@@ -60,7 +60,10 @@ POST /api/attempt {txHash} -> reads Attempt event from receipt
   one more call before payout. It reads the player's messages as evidence and
   can only say no, so a trick that fools Earl still pays nothing.
 - **Difficulty**: Earl runs on low reasoning effort so a well-built trap can win.
-  Each win becomes a lesson in later rounds' instructions, so rounds get harder.
+  Each win becomes a lesson in later rounds' instructions, which stops the easy
+  openings but not a good follow-up. A sworn fact that wins a round is retired:
+  crossed out on the page and hidden from the referee, so it cannot win again.
+  See the test results in the README.
 - **Transcripts**: every attempt is public at `/api/state` and `/api/rounds/:n`,
   so anyone can check a win was fair.
 

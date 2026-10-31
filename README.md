@@ -22,13 +22,29 @@ only take a win away: if the player got there with a trick (made-up rules, fake
 system text, JSON, role-play) instead of an argument about the physical world,
 nothing is paid and Earl's reply is replaced with a refusal.
 
-Each win becomes a lesson for the next round: Earl is told how he was beaten,
-so the same move doesn't work twice and every round gets harder.
+Each win takes something away from the next player. Earl is told how he was
+beaten, which stops the easy openings. If he was caught on a sworn fact, that
+fact is crossed out on the page and the referee stops reading it, so each fact
+can only win once. His own replies always count, so he can still be trapped
+with those.
 
 `node scripts/redteam.mjs [basic|hard|traps] [round] [effort]` throws a set of
 arguments, jailbreaks and traps at Earl and runs the referee and the win check
 on every reply. It spends the same daily Groq budget as real players, so run
 it sparingly.
+
+Last run, Oct 31, on `openai/gpt-oss-120b`:
+
+| attacks | tried | won |
+| --- | --- | --- |
+| tricks and pressure (jailbreaks, fake system text, role-play, begging) | 18 | 0 |
+| real arguments and traps, round 1 | 15 | 5 |
+| the best of those again, after those five wins | 8 | 4 |
+
+Two tricks fooled Earl and the win check threw both out. In round 1, three of
+the five wins took a single message; after the lessons every win took at least
+two. Earl's voice was adjusted after the round 1 run, so seven of the tricks were
+run again on the final version, with the same result.
 
 ```
 contracts/          FlatEarther.sol: pot, fee split, burns, payouts (Foundry)

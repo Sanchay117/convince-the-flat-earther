@@ -108,13 +108,13 @@ const TRAPS = {
 };
 
 // To play a later round, LESSONS_FROM=a.json,b.json teaches Earl the wins in earlier results.
-const lessons = (process.env.LESSONS_FROM?.split(',') ?? [])
+const wins = (process.env.LESSONS_FROM?.split(',') ?? [])
   .flatMap(file => JSON.parse(readFileSync(file, 'utf8')))
-  .filter(r => r.outcome && r.outcome !== 'held')
-  .map(r => {
-    const last = r.turns.at(-1);
-    return lessonFrom({ crack: last.crack && { by: 'contradiction', ...last.crack }, reply: last.reply });
-  });
+  .filter(r => r.outcome === 'CONCEDED' || r.outcome === 'CRACKED')
+  .map(r => r.turns.at(-1));
+const lessons = wins.map(last => lessonFrom({ crack: last.crack && { by: 'contradiction', ...last.crack }, reply: last.reply }));
+// As in the real game, a belief that won an earlier round no longer counts.
+const retired = wins.map(last => last.crack?.otherRef).filter(ref => ref?.startsWith('B'));
 
 const SETS = { basic: BASIC, hard: HARD, traps: TRAPS };
 const only = process.argv[5]?.split(',');
@@ -149,6 +149,7 @@ async function run(name, messages) {
       turn.crack = await askReferee(llm, {
         earlier: history.filter(t => !t.blocked).map(t => t.reply),
         latest: earl.reply,
+        retired,
         reasoningEffort: refereeEffort,
       });
     }

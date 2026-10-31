@@ -56,6 +56,13 @@ export function createGame({
       .map(lessonFrom);
   }
 
+  // A sworn fact can only win once: the ones that beat Earl in earlier rounds no longer count.
+  function retiredBefore(round) {
+    return [...new Set(store.attempts()
+      .filter(a => a.round < round && a.payout === 'paid' && a.crack?.otherRef?.startsWith('B'))
+      .map(a => a.crack.otherRef))];
+  }
+
   // A cracked attempt is saved before the payout, so a failed payout is retried
   // instead of asking Earl again (he might not crack twice).
   async function settle(record) {
@@ -118,6 +125,7 @@ export function createGame({
       const found = !record.conceded && await askReferee(llm, {
         earlier: history.map(a => a.reply),
         latest: record.reply,
+        retired: retiredBefore(record.round),
         reasoningEffort: refereeEffort,
       });
       if (record.conceded || found) {
@@ -186,7 +194,8 @@ export function createGame({
   const shown = record => (record.blocked ? { ...record, text: '(message hidden: blocked)' } : record);
 
   async function state() {
-    return { ...await chain.state(), recent: store.attempts({ limit: 30 }).map(shown) };
+    const current = await chain.state();
+    return { ...current, retired: retiredBefore(current.round), recent: store.attempts({ limit: 30 }).map(shown) };
   }
 
   function round(n) {

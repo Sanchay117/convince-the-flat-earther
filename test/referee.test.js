@@ -98,6 +98,22 @@ test('the referee reads beliefs and Earl\'s replies, labelled', () => {
   assert.ok(input.endsWith(`NEW: ${latest}`));
 });
 
+test('a retired belief is hidden from the referee and cannot win', () => {
+  const input = refereeInput(earlier, latest, ['B3']);
+  assert.doesNotMatch(input, /^B3:/m);
+  assert.ok(input.includes(`B4: ${EARL_BELIEFS[3]}`));
+  const verdict = {
+    contradiction: true,
+    new_quote: 'the sun is a good 5,000 km wide',
+    conflicts_with: 'b03',
+    other_quote: 'The sun is about 50 km wide',
+    explanation: 'Earl says the sun is 50 km wide, then 5,000 km.',
+  };
+  const words = { earlier: [], latest: 'Listen, the sun is a good 5,000 km wide.' };
+  assert.equal(verifyVerdict(verdict, words).otherRef, 'B3');
+  assert.equal(verifyVerdict(verdict, { ...words, retired: ['B3'] }), null);
+});
+
 test('a blocked referee call rules nothing, other failures throw', async () => {
   const failing = message => ({ async generate() { throw new Error(message); } });
   assert.equal(await askReferee(failing('content_filter'), { earlier, latest }), null);

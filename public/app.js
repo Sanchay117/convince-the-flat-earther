@@ -136,6 +136,7 @@ async function refresh() {
     $('round').textContent = state.round;
     $('attempts').textContent = `${state.attempts} tr${state.attempts === 1 ? 'y' : 'ies'}`;
     $('earl').classList.toggle('nervous', state.attempts >= NERVOUS_AT);
+    [...$('facts').children].forEach((li, i) => li.classList.toggle('retired', state.retired.includes(`B${i + 1}`)));
     renderTicker(state.recent);
     if (state.recent.length) {
       $('feed').replaceChildren(...state.recent.map(entry));

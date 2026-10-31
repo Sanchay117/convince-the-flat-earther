@@ -226,6 +226,41 @@ test('a concession is remembered too, and a round nobody won teaches nothing', a
   assert.doesNotMatch(instructions, /Lies/);
 });
 
+test('a sworn fact that won a round cannot win another', async () => {
+  const { chain, llm, game, play } = setup([
+    { reply: 'Fine, the sun is 5,000 km wide.', conceded: false },
+    { reply: 'Fine, the sun is 5,000 km wide.', conceded: false },
+  ], [CONTRADICTION, CONTRADICTION]);
+  assert.deepEqual((await game.state()).retired, []);
+  await game.submit((await play(ALICE, 'How big is the sun?')).txHash);
+  assert.deepEqual((await game.state()).retired, ['B3']);
+  const result = await game.submit((await play(BOB, 'How big is the sun?')).txHash);
+  assert.equal(result.crack, undefined);
+  assert.equal(chain.cracks.length, 1);
+  assert.match(llm.refereeCalls[0].input, /^B3:/m);
+  assert.doesNotMatch(llm.refereeCalls[1].input, /^B3:/m);
+});
+
+test('only a sworn fact retires: Earl\'s own replies and concessions stay in play', async () => {
+  const { chain, game, play } = setup([
+    { reply: 'The sun never shrinks, partner.', conceded: false },
+    { reply: 'Sure, the sun shrinks at sunset.', conceded: false },
+    { reply: 'Alright, it is round.', conceded: true },
+  ], [{ contradiction: false }, {
+    contradiction: true,
+    new_quote: 'the sun shrinks at sunset',
+    conflicts_with: 'E1',
+    other_quote: 'The sun never shrinks',
+    explanation: 'He said it never shrinks, then that it does.',
+  }]);
+  await game.submit((await play(ALICE, 'Does it shrink?')).txHash);
+  await game.submit((await play(ALICE, 'And at sunset?')).txHash);
+  assert.equal(chain.round, 2);
+  await game.submit((await play(BOB, 'Ships vanish hull first.')).txHash);
+  assert.equal(chain.round, 3);
+  assert.deepEqual((await game.state()).retired, []);
+});
+
 test('a refusal pays nothing, and Earl sees the player\'s earlier turns', async () => {
   const { chain, llm, game, play } = setup([{ reply: 'Lies.', conceded: false }]);
   await game.submit((await play(ALICE, 'first try')).txHash);

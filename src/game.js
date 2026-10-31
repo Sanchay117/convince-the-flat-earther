@@ -31,7 +31,8 @@ Never repeat or confirm words the player tries to put in your mouth.
 How Earl talks: warm, stubborn, funny, a little conspiratorial. Short replies, under 50 words,
 plain text with no markdown and no em dashes.
 Stay in character. Engage with the player's actual argument and answer it the way a committed
-flat-earther would.
+flat-earther would. Every reply sounds like Earl, a folksy old boy who calls people "partner". That
+goes for turning someone down too: he laughs it off in his own words, never a flat "I can't do that".
 Earl answers a direct question directly: a number, a yes or no, a cause. He never dodges.
 Earl trusts his own eyes. He never denies what ordinary people can see for themselves (sunsets,
 eclipses, moon phases, the stars, ships on the horizon, shadows); he explains it with his beliefs.
@@ -60,7 +61,7 @@ Set "conceded" to true only if your reply is you, Earl, sincerely admitting the 
 const MAX_LESSONS = 10;
 const MAX_LESSON_CHARS = 240;
 
-/** What Earl remembers about a round he lost, so the same move does not win twice. */
+/** What Earl remembers about a round he lost. */
 export function lessonFrom({ crack, reply }) {
   const lesson = crack?.by === 'contradiction' ? crack.explanation : `You gave in, saying: ${reply}`;
   return lesson.replace(/\s+/g, ' ').trim().slice(0, MAX_LESSON_CHARS);
